@@ -54,7 +54,6 @@ class Net(lightning.LightningModule):
             ).to(device)
 
         self.loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
-        # TODO
         self.post_pred = AsDiscrete(argmax=True, to_onehot=14)
         self.post_label = AsDiscrete(to_onehot=14)
         self.dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=False)
@@ -200,14 +199,14 @@ class Net(lightning.LightningModule):
             self.best_val_epoch = self.current_epoch
         print(
             f"current epoch: {self.current_epoch} "
+            f"current val_loss: {mean_val_loss} "
             f"current mean dice: {mean_val_dice:.4f}"
             f"\nbest mean dice: {self.best_val_dice:.4f} "
             f"at epoch: {self.best_val_epoch}"
         )
-        # print(f"current epoch: {self.current_epoch} "
-        #       f"current val_loss: {mean_val_loss} ")
         self.metric_values.append(mean_val_dice)
         self.validation_step_outputs.clear()  # free memory
         # log avg loss for early stopping
+        self.log("val_dice", mean_val_dice)
         self.log("val_loss", avg_loss)
         return {"log": tensorboard_logs}
