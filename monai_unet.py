@@ -39,7 +39,7 @@ import lightning
 import numpy as np
 
 class Net(lightning.LightningModule):
-    def __init__(self, device):
+    def __init__(self, device, augmentation = True):
         super().__init__()
 
         self._model = UNet(
@@ -67,7 +67,9 @@ class Net(lightning.LightningModule):
         self.epoch_val_loss = []
         self.training_step_outputs = []
         self.validation_step_outputs = []
-        self.prepare_data()
+        self.test_step_outputs = []
+        self.augmentation = augmentation
+        #self.prepare_data()
 
     def forward(self, x):
         return self._model(x)
@@ -79,6 +81,7 @@ class Net(lightning.LightningModule):
         datasets = data_dir + split_json
         datalist = load_decathlon_datalist(datasets, True, "training")
         val_files = load_decathlon_datalist(datasets, True, "validation")
+        test_files = load_decathlon_datalist(datasets, True, "test")
 
         train_transforms = Compose(
             [   LoadImaged(keys=["image", "label"]),
@@ -99,7 +102,17 @@ class Net(lightning.LightningModule):
                 DivisiblePadd(["image", "label"], 16)
             ]
         )
-        # TODO
+        test_transforms = Compose(
+            [
+                LoadImaged(keys=["image", "label"]),
+                EnsureChannelFirstd(keys=["image", "label"]),
+                CropForegroundd(keys=["image", "label"], source_key="image"),
+                Orientationd(keys=["image", "label"], axcodes="RAS"),
+                Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
+                DivisiblePadd(["image", "label"], 16)
+            ]
+        )
+
         # Data augmentation
         augm_transforms = Compose(
             [
@@ -109,7 +122,7 @@ class Net(lightning.LightningModule):
             ]
         )
 
-        self.train_ds = CacheDataset(
+        train_ds = CacheDataset(
             data=datalist,
             transform=train_transforms,
             cache_num=24,
@@ -124,17 +137,24 @@ class Net(lightning.LightningModule):
             num_workers=8,
         )
 
-        self.augm_ds = CacheDataset(
-            data = datalist,
-            transform=[train_transforms, augm_transforms],
-        )
+        if self.augmentation:
+            augm_ds = CacheDataset(
+                data = datalist,
+                transform=[train_transforms, augm_transforms],
+            )
 
-        self.train_augm_ds = ConcatDataset([self.train_ds, self.augm_ds])
+            self.train_ds = ConcatDataset([train_ds, augm_ds])
+        else:
+            self.train_ds = train_ds
+
+        self.test_ds = CacheDataset(
+            data=test_files,
+            transform=test_transforms
+        )
 
     def train_dataloader(self):
         train_loader = DataLoader(
-            #self.train_ds,
-            self.train_augm_ds,
+            self.train_ds,
             batch_size=1,
             shuffle=True,
             num_workers=8,
@@ -147,6 +167,10 @@ class Net(lightning.LightningModule):
     def val_dataloader(self):
         val_loader = DataLoader(self.val_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
         return val_loader
+    
+    def test_dataloader(self):
+        test_loader = DataLoader(self.test_ds, batch_size=1, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
+        return test_loader
 
     def configure_optimizers(self):
         #optimizer = torch.optim.AdamW(self._model.parameters(), lr=1e-4, weight_decay=1e-5)
@@ -169,9 +193,6 @@ class Net(lightning.LightningModule):
     def validation_step(self, batch, batch_idx):
         images, labels =  (batch["image"].to(self.device), batch["label"].to(self.device))
         outputs = self.forward(images)
-        #roi_size = (96, 96, 96)
-        #sw_batch_size = 4
-        #outputs = sliding_window_inference(images, roi_size, sw_batch_size, self.forward)
         loss = self.loss_function(outputs, labels)
         outputs = [self.post_pred(i) for i in decollate_batch(outputs)]
         labels = [self.post_label(i) for i in decollate_batch(labels)]
@@ -181,8 +202,8 @@ class Net(lightning.LightningModule):
         return d
 
     def on_validation_epoch_end(self):
-        avg_loss = torch.stack([x["val_loss"] for x in self.validation_step_outputs]).mean()
-        self.epoch_val_loss.append(avg_loss.detach().cpu().numpy())
+        #avg_loss = torch.stack([x["val_loss"] for x in self.validation_step_outputs]).mean()
+        #self.epoch_val_loss.append(avg_loss.detach().cpu().numpy())
         val_loss, num_items = 0, 0
         for output in self.validation_step_outputs:
             val_loss += output["val_loss"].sum().item()
@@ -206,7 +227,23 @@ class Net(lightning.LightningModule):
         )
         self.metric_values.append(mean_val_dice)
         self.validation_step_outputs.clear()  # free memory
+        self.epoch_val_loss.append(mean_val_loss.detach().cpu().numpy())
         # log avg loss for early stopping
         self.log("val_dice", mean_val_dice)
-        self.log("val_loss", avg_loss)
+        self.log("val_loss", mean_val_loss)
         return {"log": tensorboard_logs}
+    
+    def test_step(self, batch, batch_idx):
+        images, labels =  (batch["image"].to(self.device), batch["label"].to(self.device))
+        outputs = self.forward(images)
+        loss = self.loss_function(outputs, labels)
+        outputs = [self.post_pred(i) for i in decollate_batch(outputs)]
+        labels = [self.post_label(i) for i in decollate_batch(labels)]
+        self.dice_metric(y_pred=outputs, y=labels)
+        self.test_step_outputs.append(loss)
+    
+    def on_test_epoch_end(self):
+        avg_loss = torch.stack([x for x in self.test_step_outputs]).mean()
+        avg_dice = self.dice_metric.aggregate().item()
+        self.dice_metric.reset()
+        print(f"Loss on test set: {avg_loss}, dice metric on test set: {avg_dice}")
