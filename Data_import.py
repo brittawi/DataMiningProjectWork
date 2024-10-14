@@ -33,8 +33,8 @@ def plot_slice(image, slice):
     plt.show()
 
 #Visualise one training image 
-tr_path_img_001 = "/Users/emillundin/Desktop/D7043E/Project/Task08_HepaticVessel/imagesTr/hepaticvessel_001.nii.gz"
-tr_path_img_003 = "/Users/emillundin/Desktop/D7043E/Project/Task02_Heart/imagesTr/la_003.nii.gz"
+tr_path_img_001 = "Data/Task01_BrainTumour/imagesTr/BRATS_001.nii.gz"
+tr_path_img_003 = "Data/Task02_Heart/imagesTr/la_003.nii.gz"
 tr_img_001, tr_data_001 = load_image(tr_path_img_003)
 visualise_image(tr_data_001)
 plot_slice(tr_data_001, 30)
