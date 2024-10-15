@@ -39,13 +39,13 @@ import lightning
 import numpy as np
 
 class Net(lightning.LightningModule):
-    def __init__(self, device, augmentation = True):
+    def __init__(self, device, datadir, augmentation = True, in_channels = 1, out_channels = 2):
         super().__init__()
 
         self._model = UNet(
             spatial_dims=3,
-            in_channels=1, # hard labeling
-            out_channels=2, # soft labeling
+            in_channels=in_channels, # hard labeling
+            out_channels=out_channels, # soft labeling
             channels=(16, 32, 64, 128, 256),
             strides=(2, 2, 2, 2),
             num_res_units=2,
@@ -69,19 +69,33 @@ class Net(lightning.LightningModule):
         self.validation_step_outputs = []
         self.test_step_outputs = []
         self.augmentation = augmentation
-        #self.prepare_data()
+        self.data_dir = datadir
 
     def forward(self, x):
         return self._model(x)
 
     def prepare_data(self):
         # prepare data
-        data_dir = "C:\\awilde\\britta\\LTU\\DataMining\\Data\\Task02_Heart\\"
+        #data_dir = "C:\\awilde\\britta\\LTU\\DataMining\\Data\\Task02_Heart\\"
         split_json = "dataset.json"
-        datasets = data_dir + split_json
-        datalist = load_decathlon_datalist(datasets, True, "training")
-        val_files = load_decathlon_datalist(datasets, True, "validation")
-        test_files = load_decathlon_datalist(datasets, True, "test")
+        datasets = self.data_dir + split_json
+        # load training data
+        train_files = load_decathlon_datalist(datasets, True, "training")
+        
+        # try to load validation and test data, if not possible split the training data
+        try:
+            val_files = load_decathlon_datalist(datasets, True, "validation")
+            test_files = load_decathlon_datalist(datasets, True, "test")
+        
+        except:
+            # TODO split is hardcoded, add params
+            train_size = int(len(train_files) * 0.8)
+            val_size = int(len(train_files) * 0.10)
+            #test_size = len(train_files) - train_size - val_size
+
+            val_files = train_files[train_size:train_size+val_size]
+            test_files = train_files[train_size+val_size:]
+            train_files = train_files[:train_size]
 
         train_transforms = Compose(
             [   LoadImaged(keys=["image", "label"]),
@@ -123,23 +137,23 @@ class Net(lightning.LightningModule):
         )
 
         train_ds = CacheDataset(
-            data=datalist,
+            data=train_files,
             transform=train_transforms,
-            cache_num=24,
-            cache_rate=1.0,
+            #cache_num=24,
+            #cache_rate=1.0,
             num_workers=8,
         )
         self.val_ds = CacheDataset(
             data=val_files,
             transform=val_transforms,
-            cache_num=6,
-            cache_rate=1.0,
+            #cache_num=6,
+            #cache_rate=1.0,
             num_workers=8,
         )
 
         if self.augmentation:
             augm_ds = CacheDataset(
-                data = datalist,
+                data = train_files,
                 transform=[train_transforms, augm_transforms],
             )
 
@@ -202,8 +216,6 @@ class Net(lightning.LightningModule):
         return d
 
     def on_validation_epoch_end(self):
-        #avg_loss = torch.stack([x["val_loss"] for x in self.validation_step_outputs]).mean()
-        #self.epoch_val_loss.append(avg_loss.detach().cpu().numpy())
         val_loss, num_items = 0, 0
         for output in self.validation_step_outputs:
             val_loss += output["val_loss"].sum().item()
