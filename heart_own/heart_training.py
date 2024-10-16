@@ -2,8 +2,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch
 import torch.nn.functional as F
-from unet_model import UNet
-from heart_processing import load_nifti, preprocess_image
+from heart_own.unet_model import UNet
+from heart_own.heart_processing import load_nifti, preprocess_image
 from torch.utils.data import DataLoader, Dataset
 from sklearn.model_selection import KFold
 from torchvision import transforms
