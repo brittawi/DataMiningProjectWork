@@ -17,7 +17,8 @@ from monai.transforms import (
     Rand3DElasticd,
     DivisiblePadd,
     RandRotated,
-    RandGaussianNoised
+    RandGaussianNoised,
+    NormalizeIntensityd
 )
 from monai.networks.layers import Norm
 
@@ -46,7 +47,7 @@ class Net(lightning.LightningModule):
             spatial_dims=3,
             in_channels=in_channels, # hard labeling
             out_channels=out_channels, # soft labeling
-            channels=(16, 32, 64, 128, 256),
+            channels=(64, 128, 256, 512, 1024),
             strides=(2, 2, 2, 2),
             num_res_units=2,
             dropout =0.2,
@@ -54,8 +55,8 @@ class Net(lightning.LightningModule):
             ).to(device)
 
         self.loss_function = DiceCELoss(to_onehot_y=True, softmax=True)
-        self.post_pred = AsDiscrete(argmax=True, to_onehot=14)
-        self.post_label = AsDiscrete(to_onehot=14)
+        self.post_pred = AsDiscrete(argmax=True, to_onehot=4)
+        self.post_label = AsDiscrete(to_onehot=4)
         self.dice_metric = DiceMetric(include_background=False, reduction="mean", get_not_nans=False)
         self.best_val_dice = 0
         self.best_val_epoch = 0
@@ -102,6 +103,7 @@ class Net(lightning.LightningModule):
                 CropForegroundd(keys=["image", "label"], source_key="image"),        
                 Orientationd(keys=["image", "label"], axcodes="RAS"),
                 Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
+                NormalizeIntensityd(keys=["image"]),
                 DivisiblePadd(["image", "label"], 16)
             ]
         )
@@ -112,6 +114,7 @@ class Net(lightning.LightningModule):
                 CropForegroundd(keys=["image", "label"], source_key="image"),
                 Orientationd(keys=["image", "label"], axcodes="RAS"),
                 Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
+                NormalizeIntensityd(keys=["image"]),
                 DivisiblePadd(["image", "label"], 16)
             ]
         )
@@ -122,6 +125,7 @@ class Net(lightning.LightningModule):
                 CropForegroundd(keys=["image", "label"], source_key="image"),
                 Orientationd(keys=["image", "label"], axcodes="RAS"),
                 Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
+                NormalizeIntensityd(keys=["image"]),
                 DivisiblePadd(["image", "label"], 16)
             ]
         )
@@ -132,22 +136,19 @@ class Net(lightning.LightningModule):
             RandAffined(keys=['image', 'label'], prob=0.5, translate_range=10), 
             RandRotated(keys=['image', 'label'], prob=0.5, range_x=10.0),
             RandGaussianNoised(keys='image', prob=0.5),
+            NormalizeIntensityd(keys=["image"]),
             ]
         )
 
         train_ds = CacheDataset(
             data=self.data["training"],
             transform=train_transforms,
-            #cache_num=24,
-            #cache_rate=1.0,
-            num_workers=8,
+            num_workers=12,
         )
         self.val_ds = CacheDataset(
             data=self.data["validation"],
             transform=val_transforms,
-            #cache_num=6,
-            #cache_rate=1.0,
-            num_workers=8,
+            num_workers=12,
         )
 
         if self.augmentation:
@@ -170,10 +171,9 @@ class Net(lightning.LightningModule):
             self.train_ds,
             batch_size=1,
             shuffle=True,
-            num_workers=8,
+            num_workers=12,
             pin_memory=True,
             collate_fn=list_data_collate,
-            persistent_workers=True
         )
         return train_loader
 
