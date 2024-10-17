@@ -174,6 +174,7 @@ class Net(lightning.LightningModule):
             num_workers=12,
             pin_memory=True,
             collate_fn=list_data_collate,
+            persistent_workers=True
         )
         return train_loader
 
