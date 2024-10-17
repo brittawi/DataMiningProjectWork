@@ -1,5 +1,4 @@
 from monai.losses import DiceCELoss
-from monai.inferers import sliding_window_inference
 from monai.transforms import (
     AsDiscrete,
     EnsureChannelFirstd,
@@ -7,17 +6,12 @@ from monai.transforms import (
     CropForegroundd,
     LoadImaged,
     Orientationd,
-    RandFlipd,
-    RandCropByPosNegLabeld,
-    RandShiftIntensityd,
-    ScaleIntensityRanged,
     Spacingd,
-    RandRotate90d,
     RandAffined,
-    Rand3DElasticd,
     DivisiblePadd,
     RandRotated,
-    RandGaussianNoised
+    RandGaussianNoised,
+    NormalizeIntensityd,
 )
 from monai.networks.layers import Norm
 
@@ -103,7 +97,8 @@ class Net(lightning.LightningModule):
                 CropForegroundd(keys=["image", "label"], source_key="image"),        
                 Orientationd(keys=["image", "label"], axcodes="RAS"),
                 Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
-                DivisiblePadd(["image", "label"], 16)
+                DivisiblePadd(["image", "label"], 16),
+                NormalizeIntensityd(keys=["image"])
             ]
         )
         val_transforms = Compose(
@@ -113,7 +108,8 @@ class Net(lightning.LightningModule):
                 CropForegroundd(keys=["image", "label"], source_key="image"),
                 Orientationd(keys=["image", "label"], axcodes="RAS"),
                 Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
-                DivisiblePadd(["image", "label"], 16)
+                DivisiblePadd(["image", "label"], 16),
+                NormalizeIntensityd(keys=["image"])
             ]
         )
         test_transforms = Compose(
@@ -123,7 +119,8 @@ class Net(lightning.LightningModule):
                 CropForegroundd(keys=["image", "label"], source_key="image"),
                 Orientationd(keys=["image", "label"], axcodes="RAS"),
                 Spacingd(keys=["image", "label"], pixdim=(1.5, 1.5, 2.0), mode=("bilinear", "nearest")),
-                DivisiblePadd(["image", "label"], 16)
+                DivisiblePadd(["image", "label"], 16),
+                NormalizeIntensityd(keys=["image"])
             ]
         )
 
