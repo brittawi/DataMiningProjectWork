@@ -41,6 +41,7 @@ class Net(lightning.LightningModule):
             in_channels=in_channels, # hard labeling
             out_channels=out_channels, # soft labeling
             channels=(16, 32, 64, 128, 256),
+            #channels=(64,128,256,512,1024), for brain data
             strides=(2, 2, 2, 2),
             num_res_units=2,
             dropout =0.2,
